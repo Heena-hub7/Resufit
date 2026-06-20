@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ResuFit — AI Resume Fitting Agent</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap');
+
+  :root {
+    --thread: #B5482F;
+    --canvas: #F3EEE3;
+    --canvas-deep: #EAE2D2;
+    --charcoal: #29251F;
+    --grey: #8A8270;
+    --line: #D9D0BB;
+    --good: #3D6B4A;
+    --bad: #A8412B;
+    --warn: #9A7327;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--canvas);
+    color: var(--charcoal);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    padding: 0 0 80px;
+  }
+
+  .tape {
+    width: 100%;
+    background: var(--charcoal);
+    color: var(--canvas);
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    padding: 7px 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .tape span { padding: 0 18px; opacity: 0.55; }
+  .tape span:nth-child(5n) { opacity: 1; color: var(--thread); }
+
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 22px; }
+
+  header { padding: 38px 0 24px; position: relative; }
+
+  .eyebrow {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--grey);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .eyebrow::before { content: ''; width: 14px; height: 1px; background: var(--thread); }
+
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-size: 46px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-top: 8px;
+    line-height: 1;
+  }
+  h1 em { font-style: italic; color: var(--thread); font-weight: 500; }
+
+  .sub {
+    font-size: 14.5px;
+    color: var(--grey);
+    margin-top: 14px;
+    max-width: 50ch;
+    line-height: 1.65;
+  }
+
+  .measure-zone {
+    position: relative;
+    border: 1.5px solid var(--charcoal);
+    border-radius: 2px;
+    background: #FBF9F2;
+    margin-top: 6px;
+  }
+  .measure-zone::before {
+    content: '— paste your resume —';
+    position: absolute;
+    top: -10px;
+    left: 16px;
+    background: var(--canvas);
+    padding: 0 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--grey);
+    letter-spacing: 0.05em;
+  }
+
+  textarea#manual-input {
+    width: 100%;
+    min-height: 180px;
+    border: none;
+    background: transparent;
+    padding: 22px 18px 16px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--charcoal);
+    resize: vertical;
+  }
+  textarea#manual-input:focus { outline: none; }
+  textarea#manual-input::placeholder { color: var(--grey); }
+
+  .controls-row { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+
+  select {
+    flex: 1;
+    min-width: 190px;
+    padding: 13px 14px;
+    border: 1.5px solid var(--charcoal);
+    border-radius: 2px;
+    background: #FBF9F2;
+    color: var(--charcoal);
+    font-family: 'Inter', sans-serif;
+    font-size: 13.5px;
+  }
+
+  .fit-btn {
+    background: var(--charcoal);
+    color: var(--canvas);
+    border: none;
+    padding: 13px 24px;
+    border-radius: 2px;
+    font-weight: 600;
+    font-size: 13.5px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: background 0.15s ease;
+  }
+  .fit-btn:hover { background: var(--thread); }
+  .fit-btn:disabled { opacity: 0.45; cursor: not-allowed; background: var(--charcoal); }
+
+  .loading {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    margin-top: 22px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12.5px;
+    color: var(--thread);
+  }
+  .loading.active { display: flex; }
+
+  .needle {
+    width: 16px; height: 16px;
+    border: 2px solid var(--line);
+    border-top-color: var(--thread);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-box {
+    display: none;
+    margin-top: 20px;
+    padding: 14px 18px;
+    border-left: 3px solid var(--bad);
+    background: #F6E5DF;
+    color: var(--bad);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .error-box.active { display: block; }
+
+  #results { display: none; margin-top: 36px; }
+  #results.active { display: block; }
+
+  .fit-readout {
+    display: flex;
+    align-items: stretch;
+    border: 1.5px solid var(--charcoal);
+    margin-bottom: 22px;
+  }
+  .fit-readout .num-block {
+    background: var(--charcoal);
+    color: var(--canvas);
+    padding: 22px 26px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-width: 110px;
+  }
+  .fit-readout .num-block .big {
+    font-family: 'Fraunces', serif;
+    font-size: 38px;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .fit-readout .num-block .small {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    opacity: 0.65;
+    margin-top: 3px;
+    letter-spacing: 0.08em;
+  }
+  .fit-readout .desc {
+    padding: 18px 22px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .fit-readout .verdict { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 600; }
+  .fit-readout .verdict-sub { font-size: 13px; color: var(--grey); margin-top: 5px; line-height: 1.5; }
+
+  .panel { border: 1px solid var(--line); margin-bottom: 16px; background: #FBF9F2; }
+  .panel-head {
+    font-family: 'Space Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--grey);
+    padding: 13px 18px;
+    border-bottom: 1px dashed var(--line);
+  }
+  .panel-body { padding: 16px 18px; }
+
+  .alterations { list-style: none; }
+  .alterations li {
+    display: flex;
+    gap: 14px;
+    padding: 11px 0;
+    border-bottom: 1px dashed var(--line);
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  .alterations li:last-child { border-bottom: none; }
+  .alterations li .tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--thread);
+    flex-shrink: 0;
+    padding-top: 2px;
+    min-width: 28px;
+  }
+  .alterations li strong { font-weight: 600; }
+
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .swatch {
+    font-family: 'Space Mono', monospace;
+    font-size: 11.5px;
+    padding: 6px 11px;
+    border-radius: 2px;
+    border: 1px solid;
+  }
+  .swatch.have { border-color: var(--good); color: var(--good); background: #E5EFE5; }
+  .swatch.need { border-color: var(--bad); color: var(--bad); background: #F6E5DF; }
+
+  .seam-compare .line { font-family: 'Space Mono', monospace; font-size: 12px; padding: 11px 13px; border-radius: 2px; line-height: 1.65; }
+  .seam-compare .before { background: #F6E5DF; color: var(--bad); margin-bottom: 8px; }
+  .seam-compare .after { background: #E5EFE5; color: var(--good); }
+  .seam-compare .arrow { text-align: center; font-family: 'Space Mono', monospace; font-size: 11px; color: var(--grey); margin: 4px 0; }
+
+  footer {
+    margin-top: 50px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--line);
+    font-family: 'Space Mono', monospace;
+    font-size: 10.5px;
+    color: var(--grey);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* ===== shared logo mark ===== */
+  .logo-mark {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 600;
+  }
+  .logo-mark em { font-style: italic; color: var(--thread); font-weight: 500; }
+  .logo-mark.center-mark { text-align: center; font-size: 26px; margin-bottom: 22px; }
+  .logo-mark.small-mark { font-size: 19px; }
+
+  /* ===== landing screen ===== */
+  .landing-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 26px 0 0;
+  }
+  .nav-link-btn {
+    background: none;
+    border: 1.5px solid var(--charcoal);
+    padding: 8px 18px;
+    border-radius: 2px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--charcoal);
+  }
+  .nav-link-btn:hover { background: var(--charcoal); color: var(--canvas); }
+
+  .landing-hero { padding: 64px 0 40px; max-width: 540px; }
+  .hero-h1 {
+    font-family: 'Fraunces', serif;
+    font-size: 50px;
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+    margin-top: 14px;
+  }
+  .hero-h1 em { font-style: italic; color: var(--thread); font-weight: 500; }
+  .hero-sub { margin-top: 18px; font-size: 15.5px; max-width: 48ch; }
+  .hero-cta { margin-top: 28px; padding: 15px 28px; font-size: 14.5px; }
+
+  .hero-tape-strip {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-top: 46px;
+    padding-top: 20px;
+    border-top: 1px dashed var(--line);
+    font-family: 'Space Mono', monospace;
+  }
+  .hero-tape-strip .tape-num { font-size: 12px; color: var(--thread); font-weight: 700; }
+  .hero-tape-strip .tape-label { font-size: 11.5px; color: var(--grey); text-transform: uppercase; letter-spacing: 0.06em; margin-right: 14px; }
+
+  .landing-features {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    margin-bottom: 50px;
+  }
+  .feat-card { background: var(--canvas); padding: 24px 20px; }
+  .feat-num { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--thread); margin-bottom: 10px; }
+  .feat-title { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+  .feat-desc { font-size: 12.5px; color: var(--grey); line-height: 1.55; }
+
+  @media (max-width: 640px) {
+    .landing-features { grid-template-columns: 1fr; }
+    .hero-h1 { font-size: 38px; }
+  }
+
+  /* ===== auth screen ===== */
+  .auth-wrap { padding-top: 30px; max-width: 440px; }
+  .back-link {
+    background: none;
+    border: none;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--grey);
+    cursor: pointer;
+    margin-bottom: 26px;
+    padding: 0;
+  }
+  .back-link:hover { color: var(--thread); }
+
+  .auth-card {
+    border: 1.5px solid var(--charcoal);
+    padding: 34px 30px 30px;
+    background: #FBF9F2;
+  }
+
+  .auth-tabs {
+    display: flex;
+    border: 1px solid var(--line);
+    margin-bottom: 26px;
+  }
+  .auth-tab {
+    flex: 1;
+    background: none;
+    border: none;
+    padding: 10px;
+    font-family: 'Inter', sans-serif;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--grey);
+    cursor: pointer;
+  }
+  .auth-tab.active { background: var(--charcoal); color: var(--canvas); }
+
+  .field-label {
+    display: block;
+    font-family: 'Space Mono', monospace;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--grey);
+    margin: 16px 0 6px;
+  }
+  .field-label:first-of-type { margin-top: 0; }
+
+  .field-input {
+    width: 100%;
+    padding: 12px 13px;
+    border: 1.5px solid var(--line);
+    border-radius: 2px;
+    background: #FFFEF9;
+    font-family: 'Inter', sans-serif;
+    font-size: 13.5px;
+    color: var(--charcoal);
+  }
+  .field-input:focus { outline: none; border-color: var(--thread); }
+
+  .auth-submit { width: 100%; margin-top: 24px; padding: 13px; }
+  .auth-note {
+    font-size: 11px;
+    color: var(--grey);
+    text-align: center;
+    margin-top: 14px;
+    line-height: 1.5;
+    font-family: 'Space Mono', monospace;
+  }
+
+  #name-field-label.hidden-field,
+  #auth-name.hidden-field { display: none; }
+
+  /* ===== tool topbar ===== */
+  .tool-topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 22px 0 0;
+  }
+  .user-pill {
+    font-family: 'Space Mono', monospace;
+    font-size: 11.5px;
+    padding: 7px 14px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    color: var(--grey);
+  }
+</style>
+</head>
+<body>
+
+<div class="tape" id="tape"></div>
+
+<!-- ===================== LANDING SCREEN ===================== -->
+<div class="screen" id="screen-landing">
+  <div class="wrap landing-wrap">
+    <nav class="landing-nav">
+      <div class="logo-mark">Resu<em>Fit</em></div>
+      <button class="nav-link-btn" id="landing-to-login">Sign in</button>
+    </nav>
+
+    <div class="landing-hero">
+      <div class="eyebrow">resume fitting agent</div>
+      <h1 class="hero-h1">Every resume<br>has a <em>better fit.</em></h1>
+      <p class="sub hero-sub">Paste yours in, pick the role you're aiming for, and the agent measures what's strong, what's loose, and re-stitches one line — live, in under a minute.</p>
+      <button class="fit-btn hero-cta" id="landing-to-signup">Get fitted, free →</button>
+
+      <div class="hero-tape-strip">
+        <div class="tape-num">01</div>
+        <div class="tape-label">measure</div>
+        <div class="tape-num">02</div>
+        <div class="tape-label">alter</div>
+        <div class="tape-num">03</div>
+        <div class="tape-label">re-stitch</div>
+      </div>
+    </div>
+
+    <div class="landing-features">
+      <div class="feat-card">
+        <div class="feat-num">01</div>
+        <div class="feat-title">Fit score</div>
+        <div class="feat-desc">A 0–100 read on how your resume sits against the role you're aiming for.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-num">02</div>
+        <div class="feat-title">Alterations</div>
+        <div class="feat-desc">Four concrete fixes, ranked by how much they'll move the needle.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-num">03</div>
+        <div class="feat-title">Live re-stitch</div>
+        <div class="feat-desc">Your weakest line, rewritten sharper — so you see the agent actually working.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== LOGIN / SIGNUP SCREEN ===================== -->
+<div class="screen" id="screen-auth" style="display:none;">
+  <div class="wrap auth-wrap">
+    <button class="back-link" id="auth-back">← back</button>
+    <div class="auth-card">
+      <div class="logo-mark center-mark">Resu<em>Fit</em></div>
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tab-signup">Create account</button>
+        <button class="auth-tab" id="tab-signin">Sign in</button>
+      </div>
+
+      <div class="auth-form">
+        <label class="field-label" id="name-field-label">Your name</label>
+        <input type="text" class="field-input" id="auth-name" placeholder="Heena">
+
+        <label class="field-label">Email</label>
+        <input type="email" class="field-input" id="auth-email" placeholder="you@email.com">
+
+        <label class="field-label">Password</label>
+        <input type="password" class="field-input" id="auth-password" placeholder="••••••••">
+
+        <button class="fit-btn auth-submit" id="auth-submit">Create account →</button>
+        <div class="auth-note">No real account is created — this is a demo flow for the agent below.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== TOOL SCREEN ===================== -->
+<div class="screen" id="screen-tool" style="display:none;">
+<div class="wrap">
+  <div class="tool-topbar">
+    <div class="logo-mark small-mark">Resu<em>Fit</em></div>
+    <div class="user-pill" id="user-pill">Hi, friend</div>
+  </div>
+
+  <header>
+    <div class="eyebrow">resume fitting agent</div>
+    <h1>Check the <em>fit</em></h1>
+    <p class="sub">Paste your resume, pick the role you're aiming for, and the agent measures the fit — what reads strong, what's loose, and one bullet point tailored on the spot.</p>
+  </header>
+
+  <div class="measure-zone">
+    <textarea id="manual-input" placeholder="Paste your resume text here — summary, experience, projects, skills..."></textarea>
+  </div>
+
+  <div class="controls-row">
+    <select id="role-select">
+      <option value="AI Agent Developer">AI Agent Developer</option>
+      <option value="Frontend / Web Developer">Frontend / Web Developer</option>
+      <option value="Graphic Designer">Graphic Designer</option>
+      <option value="Digital Marketing Analyst">Digital Marketing Analyst</option>
+      <option value="Content Writer">Content Writer</option>
+      <option value="UI/UX Designer">UI/UX Designer</option>
+    </select>
+    <button class="fit-btn" id="analyze-btn">Check the fit →</button>
+  </div>
+
+  <div class="loading" id="loading">
+    <div class="needle"></div>
+    <span id="loading-text">Taking measurements...</span>
+  </div>
+
+  <div class="error-box" id="error-box"></div>
+
+  <div id="results">
+    <div class="fit-readout">
+      <div class="num-block">
+        <div class="big" id="score-num">--</div>
+        <div class="small">/ 100 fit</div>
+      </div>
+      <div class="desc">
+        <div class="verdict" id="verdict">—</div>
+        <div class="verdict-sub" id="verdict-sub">—</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">Alterations needed</div>
+      <div class="panel-body"><ul class="alterations" id="fix-list"></ul></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">Material check — <span id="role-name-display"></span></div>
+      <div class="panel-body"><div class="swatches" id="keyword-chips"></div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">One seam, re-stitched</div>
+      <div class="panel-body seam-compare" id="rewrite-block"></div>
+    </div>
+  </div>
+
+  <footer>
+    <span>ResuFit · built by Heena</span>
+    <span>v1.0</span>
+  </footer>
+</div>
+</div>
+<!-- end tool screen -->
+
+<script>
+// ===== screen navigation =====
+const screenLanding = document.getElementById('screen-landing');
+const screenAuth = document.getElementById('screen-auth');
+const screenTool = document.getElementById('screen-tool');
+
+function showScreen(name) {
+  screenLanding.style.display = name === 'landing' ? 'block' : 'none';
+  screenAuth.style.display = name === 'auth' ? 'block' : 'none';
+  screenTool.style.display = name === 'tool' ? 'block' : 'none';
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+let authMode = 'signup';
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const tabSignup = document.getElementById('tab-signup');
+  const tabSignin = document.getElementById('tab-signin');
+  const nameLabel = document.getElementById('name-field-label');
+  const nameInput = document.getElementById('auth-name');
+  const submitBtn = document.getElementById('auth-submit');
+
+  if (mode === 'signup') {
+    tabSignup.classList.add('active');
+    tabSignin.classList.remove('active');
+    nameLabel.classList.remove('hidden-field');
+    nameInput.classList.remove('hidden-field');
+    submitBtn.textContent = 'Create account →';
+  } else {
+    tabSignin.classList.add('active');
+    tabSignup.classList.remove('active');
+    nameLabel.classList.add('hidden-field');
+    nameInput.classList.add('hidden-field');
+    submitBtn.textContent = 'Sign in →';
+  }
+}
+
+document.getElementById('landing-to-signup').addEventListener('click', () => {
+  setAuthMode('signup');
+  showScreen('auth');
+});
+document.getElementById('landing-to-login').addEventListener('click', () => {
+  setAuthMode('signin');
+  showScreen('auth');
+});
+document.getElementById('auth-back').addEventListener('click', () => showScreen('landing'));
+document.getElementById('tab-signup').addEventListener('click', () => setAuthMode('signup'));
+document.getElementById('tab-signin').addEventListener('click', () => setAuthMode('signin'));
+
+document.getElementById('auth-submit').addEventListener('click', () => {
+  const name = document.getElementById('auth-name').value.trim();
+  const email = document.getElementById('auth-email').value.trim();
+
+  if (!email) {
+    document.getElementById('auth-email').focus();
+    return;
+  }
+
+  const userPill = document.getElementById('user-pill');
+  if (authMode === 'signup' && name) {
+    userPill.textContent = `Hi, ${name}`;
+  } else {
+    userPill.textContent = `Hi, ${email.split('@')[0]}`;
+  }
+
+  showScreen('tool');
+});
+
+// ===== decorative measuring tape =====
+const tape = document.getElementById('tape');
+let tapeHtml = '';
+for (let i = 0; i <= 60; i++) tapeHtml += `<span>${i}${i % 5 === 0 ? ' cm' : ''}</span>`;
+tape.innerHTML = tapeHtml + tapeHtml;
+
+const manualInput = document.getElementById('manual-input');
+const analyzeBtn = document.getElementById('analyze-btn');
+const loading = document.getElementById('loading');
+const loadingText = document.getElementById('loading-text');
+const errorBox = document.getElementById('error-box');
+const results = document.getElementById('results');
+const roleSelect = document.getElementById('role-select');
+
+const loadingMsgs = [
+  "Taking measurements...",
+  "Checking the seams...",
+  "Comparing against the pattern...",
+  "Re-stitching a loose line...",
+  "Finishing the fitting..."
+];
+
+function cycleLoadingMessages() {
+  let i = 0;
+  return setInterval(() => {
+    i = (i + 1) % loadingMsgs.length;
+    loadingText.textContent = loadingMsgs[i];
+  }, 1300);
+}
+
+analyzeBtn.addEventListener('click', async () => {
+  const resumeText = manualInput.value.trim();
+  const role = roleSelect.value;
+
+  errorBox.classList.remove('active');
+  results.classList.remove('active');
+
+  if (resumeText.length < 50) {
+    errorBox.textContent = 'Paste a bit more of your resume — at least a few lines of summary or experience.';
+    errorBox.classList.add('active');
+    return;
+  }
+
+  analyzeBtn.disabled = true;
+  loading.classList.add('active');
+  const interval = cycleLoadingMessages();
+
+  try {
+    const systemPrompt = `You are ResuFit, an autonomous resume-analysis agent that evaluates how well a resume fits a target job role. Write in plain, natural language. Respond ONLY with valid JSON — no markdown, no backticks, no preamble. Schema:
+{
+  "score": <integer 0-100>,
+  "verdict": "<short 3-6 word verdict, e.g. 'Solid base, needs sharper proof'>",
+  "verdict_sub": "<one sentence, max 22 words, explaining the score for this target role>",
+  "top_fixes": [
+    {"label": "<3-5 word fix title>", "detail": "<one sentence specific actionable fix, max 25 words>"}
+  ] (exactly 4 items, most important first),
+  "keywords_present": [<3-6 short keyword/skill strings genuinely found in the resume relevant to this role>],
+  "keywords_missing": [<3-6 short keyword/skill strings missing but expected for this role>],
+  "rewrite_before": "<the single weakest bullet point copied verbatim from the resume>",
+  "rewrite_after": "<that bullet rewritten sharper, quantified where reasonable, tailored to the role, max 30 words>"
+}
+Be honest and specific. Never invent experience not present in the resume.`;
+
+    const userPrompt = `Target role: ${role}\n\nResume text:\n${resumeText}`;
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }]
+      })
+    });
+
+    const data = await response.json();
+    const textBlock = data.content.find(b => b.type === 'text');
+    if (!textBlock) throw new Error('No response from agent.');
+
+    const cleaned = textBlock.text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+
+    renderResults(parsed, role);
+
+  } catch (err) {
+    console.error(err);
+    errorBox.textContent = 'The agent hit a snag reading your resume. Give it another try.';
+    errorBox.classList.add('active');
+  } finally {
+    clearInterval(interval);
+    loading.classList.remove('active');
+    analyzeBtn.disabled = false;
+  }
+});
+
+function renderResults(data, role) {
+  document.getElementById('score-num').textContent = data.score;
+  document.getElementById('verdict').textContent = data.verdict;
+  document.getElementById('verdict-sub').textContent = data.verdict_sub;
+  document.getElementById('role-name-display').textContent = role;
+
+  const numBlock = document.querySelector('.num-block');
+  if (data.score >= 75) numBlock.style.background = '#3D6B4A';
+  else if (data.score >= 50) numBlock.style.background = '#29251F';
+  else numBlock.style.background = '#A8412B';
+
+  const fixList = document.getElementById('fix-list');
+  fixList.innerHTML = '';
+  (data.top_fixes || []).forEach((fix, idx) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="tag">${String(idx+1).padStart(2,'0')}</span><span><strong>${escapeHtml(fix.label)}</strong> — ${escapeHtml(fix.detail)}</span>`;
+    fixList.appendChild(li);
+  });
+
+  const chipsWrap = document.getElementById('keyword-chips');
+  chipsWrap.innerHTML = '';
+  (data.keywords_present || []).forEach(k => {
+    const c = document.createElement('span');
+    c.className = 'swatch have';
+    c.textContent = '✓ ' + k;
+    chipsWrap.appendChild(c);
+  });
+  (data.keywords_missing || []).forEach(k => {
+    const c = document.createElement('span');
+    c.className = 'swatch need';
+    c.textContent = '✕ ' + k;
+    chipsWrap.appendChild(c);
+  });
+
+  const rewriteBlock = document.getElementById('rewrite-block');
+  rewriteBlock.innerHTML = `
+    <div class="line before">${escapeHtml(data.rewrite_before || '—')}</div>
+    <div class="arrow">↓ re-stitched</div>
+    <div class="line after">${escapeHtml(data.rewrite_after || '—')}</div>
+  `;
+
+  results.classList.add('active');
+  results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+</script>
+
+</body>
+</html>
